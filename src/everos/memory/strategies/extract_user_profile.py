@@ -45,6 +45,8 @@ profile in a follow-up turn (each cluster gets re-evaluated on every
 
 from __future__ import annotations
 
+import os
+
 from everalgo.user_memory import ProfileExtractor
 
 from everos.core.observability.logging import get_logger
@@ -65,6 +67,13 @@ the storage budget for profile re-extractions becomes a concern."""
 PROFILE_MIN_MEMCELLS = 1
 """Opensource parity: skip when the candidate cluster set holds fewer
 than ``N`` memcells across all selected clusters."""
+
+PROFILE_MAX_INPUT_TOKENS = int(os.environ.get("EVEROS_PROFILE_MAX_INPUT_TOKENS", "48000"))
+"""memtrial patch: most memcell tokens (estimated as chars / 3) one profile extraction reads."""
+
+
+def _approx_tokens(mc) -> int:
+    return len(mc.model_dump_json()) // 3
 
 
 def _profile_applies(event: Event, deps: MemoryDeps) -> bool:
@@ -257,10 +266,38 @@ async def extract_user_profile(
             )
             return []
 
-        memcells = sorted(
-            await deps.stores.memcell.find_by_ids(memcell_ids),
-            key=lambda mc: mc.timestamp,
-        )
+        # memtrial patch: bound the extraction input. Upstream re-reads every
+        # memcell of every fresh cluster on every new memcell, so the prompt
+        # grows without limit (250k+ tokens, then rejected by the model and the
+        # profile stops advancing). Keep the triggering memcell, then the most
+        # recent others, until PROFILE_MAX_INPUT_TOKENS (chars / 3) is spent.
+        selected = await deps.stores.memcell.find_by_ids(memcell_ids)
+        trigger = await deps.stores.memcell.find_by_ids([event.memcell_id])
+        budget = PROFILE_MAX_INPUT_TOKENS
+        kept = []
+        for mc in trigger:
+            budget -= _approx_tokens(mc)
+            kept.append(mc)
+        seen = {mc.model_dump_json() for mc in kept}
+        for mc in sorted(selected, key=lambda mc: mc.timestamp, reverse=True):
+            key = mc.model_dump_json()
+            if key in seen:
+                continue
+            cost = _approx_tokens(mc)
+            if cost > budget:
+                continue
+            budget -= cost
+            seen.add(key)
+            kept.append(mc)
+        if len(kept) < len(selected):
+            logger.info(
+                "profile_input_capped",
+                owner_id=event.owner_id,
+                selected=len(selected),
+                kept=len(kept),
+                max_tokens=PROFILE_MAX_INPUT_TOKENS,
+            )
+        memcells = sorted(kept, key=lambda mc: mc.timestamp)
         if not memcells:
             return []
 
