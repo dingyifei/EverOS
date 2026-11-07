@@ -27,6 +27,7 @@ from __future__ import annotations
 
 __all__ = ["OpenAIProvider", "ResponseFormatMode"]
 
+import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -242,7 +243,7 @@ class OpenAIProvider:
         """
         completion = await self._send(request)
         self._observe(completion, attempt)
-        text = _check_upstream(completion)
+        text = _strip_code_fence(_check_upstream(completion))
         _validate(text, response_format)
         return text
 
@@ -325,6 +326,21 @@ def _check_upstream(completion: ChatCompletion) -> str:
             reason="no_content",
         )
     return choice.message.content
+
+
+_FENCED: Final = re.compile(r"\A\s*```[A-Za-z0-9_-]*[ \t]*\n(?P<body>.*?)\n?```\s*\Z", re.DOTALL)
+
+
+def _strip_code_fence(text: str) -> str:
+    """Unwrap a reply sent as one markdown code block (```json ... ```).
+
+    Without schema enforcement upstream (Ollama Cloud ignores ``response_format``),
+    some models copy the fenced output skeletons in everalgo's profile prompts and
+    wrap otherwise valid JSON in a fence. Only a reply that is a single fenced block
+    as a whole is unwrapped; anything else passes through for validation unchanged.
+    """
+    match = _FENCED.match(text)
+    return match.group("body") if match else text
 
 
 def _validate(text: str, response_format: type[BaseModel]) -> None:

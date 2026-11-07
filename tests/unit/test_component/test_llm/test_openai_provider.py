@@ -279,3 +279,24 @@ async def test_cancellation_propagates() -> None:
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["```json\n" + _VALID + "\n```", "```\n" + _VALID + "\n```", "  ```json\n" + _VALID + "```  \n"],
+)
+async def test_fenced_json_reply_is_unwrapped(content: str) -> None:
+    upstream = _Upstream(_completion(content))
+    text = await _provider(upstream).achat(_prompt(), response_format=_Reply)
+    assert json.loads(text) == {"text": "ok"}
+    assert len(upstream.bodies) == 1
+
+
+async def test_prose_around_a_fence_still_fails_validation() -> None:
+    fenced_in_prose = "Here it is:\n```json\n" + _VALID + "\n```"
+    upstream = _Upstream(_completion(fenced_in_prose), _completion(fenced_in_prose))
+    with pytest.raises(LLMCallError) as info:
+        await _provider(upstream, invalid_reply_retries=1).achat(
+            _prompt(), response_format=_Reply
+        )
+    assert info.value.reason == "invalid_reply"
