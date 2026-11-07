@@ -42,8 +42,13 @@ def test_returns_the_instructions_verbatim(tmp_path: Path) -> None:
     assert CustomInstructions(tmp_path).load("reflect") == "Keep {dates}."
 
 
-@pytest.mark.parametrize(
-    "operator", ["boundary_detection", "episode_extract", "profile_extract", "reflect"]
-)
-def test_every_bundled_operator_ships_disabled(operator: Operator) -> None:
+@pytest.mark.parametrize("operator", ["boundary_detection", "episode_extract", "reflect"])
+def test_bundled_operators_ship_disabled(operator: Operator) -> None:
     assert bundled_instructions().load(operator) is None
+
+
+def test_bundled_profile_extract_keeps_identifiers_out_and_applies_corrections() -> None:
+    text = bundled_instructions().load("profile_extract")
+    assert text is not None
+    for phrase in ("email addresses", "verification codes", "API keys", "update that item"):
+        assert phrase in text

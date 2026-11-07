@@ -48,7 +48,7 @@ _CONFIG_ROOT = Path(__file__).resolve().parents[2] / "src" / "everos" / "config"
 
 
 def bundled_instructions() -> CustomInstructions:
-    """The custom instructions the package ships (every operator disabled)."""
+    """The custom instructions the package ships (only profile_extract enabled)."""
     return CustomInstructions(_CONFIG_ROOT)
 
 

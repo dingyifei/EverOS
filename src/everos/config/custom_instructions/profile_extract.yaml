@@ -13,5 +13,11 @@
 #
 # Disabled, or with blank ``instructions``, the operator runs on its own rules.
 
-enabled: false
-instructions: ""
+enabled: true
+instructions: >-
+  Describe accounts, services and credentials in words only, for example
+  "has a Proton Mail account" or "holds a voucher for the print shop": leave
+  out email addresses, phone numbers, account, order and tracking ids,
+  voucher, OTP and verification codes, passwords, API keys and tokens.
+  When the conversation corrects or contradicts a stored item, update that
+  item to the corrected fact, or delete it when it no longer holds.
